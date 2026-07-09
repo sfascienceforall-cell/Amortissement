@@ -1,0 +1,97 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#fff;font-family:system-ui,-apple-system,sans-serif;}
+canvas{display:block;border-radius:12px;border:1.5px solid #e8e8e8;touch-action:none;}
+.fml{font-size:13px;padding:10px 16px;border-radius:20px;background:#f5f5f5;border:1.5px solid #d0d0d0;color:#2c2c2a;margin:6px 0;font-family:ui-monospace,monospace;line-height:1.8;}
+.row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap;}
+.pill{font-size:13px;font-weight:500;color:#2c2c2a;background:#f5f5f5;border:1.5px solid #d0d0d0;border-radius:20px;padding:6px 14px;white-space:nowrap;}
+.btn{padding:7px 15px;border-radius:20px;font-size:13px;font-weight:500;cursor:pointer;border:1.5px solid #d0d0d0;background:#fff;color:#2c2c2a;}
+.btn.on{border-color:#185fa5;background:#e6f1fb;color:#185fa5;}
+.val{min-width:56px;text-align:center;font-size:13px;font-weight:500;color:#2c2c2a;background:#f5f5f5;border:1.5px solid #d0d0d0;border-radius:20px;padding:5px 10px;}
+.info{font-size:12px;padding:8px 14px;border-radius:20px;background:#f5f5f5;border:1.5px solid #d0d0d0;color:#555;margin:6px 0;font-family:ui-monospace,monospace;line-height:1.7;}
+input[type=range]{flex:1;min-width:100px;}
+</style>
+
+<canvas id="cv" style="width:100%;height:56vh;min-height:350px;"></canvas>
+<div class="fml" id="fml"></div>
+
+<div class="row">
+  <button class="btn" id="r0" onclick="preset(0)">Périodique (ζ=0)</button>
+  <button class="btn" id="r1" onclick="preset(0.08)">Pseudo-périodique (ζ&lt;1)</button>
+  <button class="btn" id="r2" onclick="preset(1)">Critique (ζ=1)</button>
+  <button class="btn" id="r3" onclick="preset(2)">Apériodique (ζ&gt;1)</button>
+</div>
+<div class="row">
+  <span class="pill" style="color:#BA7517;border-color:#f5c88f;">amortissement ζ</span>
+  <input type="range" id="z" min="0" max="2.5" value="0.08" step="0.02" style="accent-color:#BA7517;max-width:240px;">
+  <span class="val" id="zv" style="color:#BA7517;border-color:#f5c88f;">0.08</span>
+  <button class="btn on" id="bP" onclick="paused=!paused;this.className=paused?'btn':'btn on';this.textContent=paused?'Lecture':'Pause';">Pause</button>
+  <button class="btn" onclick="tc=0">Relancer</button>
+</div>
+<div class="info" id="info"></div>
+
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const BLUE='#378ADD',RED='#E24B4A',GREEN='#1D9E75',VIOLET='#7F77DD',ORANGE='#D85A30',INK='#3d3d3a',GREY='#9aa0a6',AX='#c8ccd0';
+let W=0,H=0,dpr=1,paused=false,zeta=0.08,tc=0;
+const w0=Math.PI,Tmax=7,Nn=900,dt=Tmax/Nn;let xs=new Float64Array(Nn+1);
+function syncSize(){const r=cv.getBoundingClientRect();dpr=window.devicePixelRatio||1;
+  const nW=Math.round(r.width)||700,nH=Math.round(r.height)||360;
+  if(nW!==W||nH!==H){W=nW;H=nH;cv.width=W*dpr;cv.height=H*dpr;}ctx.setTransform(dpr,0,0,dpr,0,0);}
+function deriv(s){return [s[1], -w0*w0*s[0]-2*zeta*w0*s[1]];}
+function recompute(){let s=[1,0];xs[0]=1;
+  for(let i=1;i<=Nn;i++){const k1=deriv(s),
+    k2=deriv([s[0]+0.5*dt*k1[0],s[1]+0.5*dt*k1[1]]),
+    k3=deriv([s[0]+0.5*dt*k2[0],s[1]+0.5*dt*k2[1]]),
+    k4=deriv([s[0]+dt*k3[0],s[1]+dt*k3[1]]);
+    s=[s[0]+dt/6*(k1[0]+2*k2[0]+2*k3[0]+k4[0]),s[1]+dt/6*(k1[1]+2*k2[1]+2*k3[1]+k4[1])];xs[i]=s[0];}}
+recompute();
+function regime(){if(zeta<0.001)return['Régime périodique (non amorti)',VIOLET];
+  if(zeta<0.999)return['Régime pseudo-périodique (sous-amorti)',GREEN];
+  if(zeta<1.02)return['Régime critique',ORANGE];return['Régime apériodique (sur-amorti)',RED];}
+document.getElementById('z').addEventListener('input',e=>{zeta=+e.target.value;document.getElementById('zv').textContent=zeta.toFixed(2);recompute();tc=0;});
+function preset(v){zeta=v;document.getElementById('z').value=v;document.getElementById('zv').textContent=v.toFixed(2);recompute();tc=0;}
+
+function draw(){syncSize();ctx.clearRect(0,0,W,H);ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
+  const reg=regime(),col=reg[1];
+  if(!paused){tc+=0.6;if(tc>Nn)tc=0;}
+  const ci=Math.min(Nn,Math.floor(tc)),xNow=xs[ci];
+  // ----- panneau gauche : masse-ressort -----
+  const cyy=H*0.5,wallX=W*0.06,eqX=W*0.20,amp=W*0.11,mxp=eqX+xNow*amp;
+  ctx.strokeStyle=INK;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(wallX,cyy-46);ctx.lineTo(wallX,cyy+46);ctx.stroke();
+  ctx.strokeStyle='#bbb';ctx.lineWidth=1;for(let h=cyy-44;h<cyy+46;h+=10){ctx.beginPath();ctx.moveTo(wallX,h);ctx.lineTo(wallX-8,h+8);ctx.stroke();}
+  ctx.strokeStyle='#7f8790';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(wallX,cyy);const n=14;
+  for(let i=0;i<=n;i++){const t=i/n,px=wallX+(mxp-22-wallX)*t,py=cyy+(i%2?9:-9)*(i>0&&i<n?1:0);ctx.lineTo(px,py);}ctx.lineTo(mxp-22,cyy);ctx.stroke();
+  ctx.strokeStyle='rgba(0,0,0,0.18)';ctx.setLineDash([3,4]);ctx.beginPath();ctx.moveTo(eqX,cyy-52);ctx.lineTo(eqX,cyy+52);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=GREY;ctx.font='10px system-ui';ctx.textAlign='center';ctx.fillText('équilibre',eqX,cyy+66);
+  ctx.fillStyle='#eef4fb';ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.beginPath();ctx.roundRect(mxp-22,cyy-22,44,44,6);ctx.fill();ctx.stroke();
+
+  // ----- panneau droit : courbe x(t) -----
+  const gx=W*0.34,gw=W*0.62,gy=H*0.5,gh=H*0.34;
+  const TX=i=>gx+(i/Nn)*gw, XY=x=>gy-x*gh;
+  ctx.strokeStyle=AX;ctx.lineWidth=1.4;ctx.beginPath();ctx.moveTo(gx,gy);ctx.lineTo(gx+gw,gy);ctx.moveTo(gx,gy-gh*1.15);ctx.lineTo(gx,gy+gh*1.15);ctx.stroke();
+  ctx.fillStyle=GREY;ctx.font='11px system-ui';ctx.textAlign='left';ctx.fillText('x(t)',gx+4,gy-gh*1.15+4);ctx.fillText('t',gx+gw-10,gy+14);
+  // enveloppe e^(-ζω₀t) (sous-amorti / critique)
+  if(zeta>0.001&&zeta<1.3){ctx.strokeStyle='rgba(216,90,48,0.55)';ctx.setLineDash([5,4]);ctx.lineWidth=1.3;
+    for(const sgn of [1,-1]){ctx.beginPath();for(let i=0;i<=Nn;i+=4){const e=sgn*Math.exp(-zeta*w0*i*dt);i===0?ctx.moveTo(TX(i),XY(e)):ctx.lineTo(TX(i),XY(e));}ctx.stroke();}ctx.setLineDash([]);}
+  // courbe
+  ctx.strokeStyle=col;ctx.lineWidth=2.4;ctx.beginPath();for(let i=0;i<=Nn;i++){i===0?ctx.moveTo(TX(i),XY(xs[i])):ctx.lineTo(TX(i),XY(xs[i]));}ctx.stroke();
+  // curseur + point
+  ctx.strokeStyle='rgba(0,0,0,0.25)';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(TX(ci),gy-gh*1.1);ctx.lineTo(TX(ci),gy+gh*1.1);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=col;ctx.beginPath();ctx.arc(TX(ci),XY(xNow),5,0,7);ctx.fill();
+  // trait reliant la masse au point (même x)
+  ctx.strokeStyle='rgba(0,0,0,0.10)';ctx.lineWidth=1;ctx.setLineDash([2,4]);ctx.beginPath();ctx.moveTo(mxp,cyy);ctx.lineTo(TX(ci),XY(xNow));ctx.stroke();ctx.setLineDash([]);
+
+  ctx.fillStyle=col;ctx.font='600 14px system-ui';ctx.textAlign='left';ctx.fillText(reg[0],gx,gy-gh*1.15-8);
+
+  const wd=w0*Math.sqrt(Math.max(0,1-zeta*zeta));
+  document.getElementById('fml').innerHTML='<b>m·ẍ + c·ẋ + k·x = 0</b> &nbsp;|&nbsp; ζ = c/(2√(km)) &nbsp;|&nbsp; ω₀ = √(k/m)'+
+    (zeta<0.999?' &nbsp;|&nbsp; pseudo-pulsation ω = ω₀·√(1−ζ²)':'');
+  document.getElementById('info').innerHTML='ζ = '+zeta.toFixed(2)+' → <b style="color:'+col+'">'+reg[0]+'</b>. '+
+    (zeta<0.001?'Aucune perte : la masse oscille indéfiniment à ω₀ (l\'énergie se conserve).':
+     zeta<0.999?'Le frottement fait décroître l\'amplitude : oscillations amorties sous l\'enveloppe e^(−ζω₀t) (orange), à la pseudo-pulsation ω = '+wd.toFixed(2)+' rad/s.':
+     zeta<1.02?'Cas limite : retour à l\'équilibre le plus RAPIDE possible SANS oscillation (visé pour amortisseurs, portes, galvanomètres).':
+     'Trop de frottement : retour à l\'équilibre LENT, sans oscillation (le système « traîne »).');
+  requestAnimationFrame(draw);}
+draw();
+</script>
